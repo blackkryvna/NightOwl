@@ -24,6 +24,10 @@ public:
     quint16 peerPort() const { return m_peerPort; }
     quint64 token() const { return m_token; }
 
+public slots:
+    // Asks the client connection to close (used on honeypot stop).
+    void shutdown();
+
 signals:
     void sessionStarted(const Events::SessionStarted &e);
     void authAttempt(const Events::AuthAttempt &e);

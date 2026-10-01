@@ -1,6 +1,7 @@
 #include "core/Config.h"
 #include "core/EventQueue.h"
 #include "ui/MainMenu.h"
+#include "ui/MonitorWindow.h"
 
 #include <QApplication>
 
@@ -12,7 +13,6 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion(QStringLiteral("0.1.0"));
     Events::registerMetaTypes();
 
-    // Config is loaded here so stage 6+ can pass it to Listener/DbWriter.
     Config config;
     if (config.usingDefaults())
         std::cout << "config: using defaults (port 2222)" << std::endl;
@@ -23,11 +23,15 @@ int main(int argc, char *argv[]) {
     MainMenu menu;
     menu.show();
 
-    // Stage 5: the monitor window does not exist yet, acknowledge the click.
-    // Full transition (trap start + window switch) lands in stage 6/8.
-    QObject::connect(&menu, &MainMenu::startRequested, []() {
-        std::cout << "honeyden: start requested (monitor window arrives in stage 6)"
-                  << std::endl;
+    // Launch the trap + live table when the animated button fires.
+    QObject::connect(&menu, &MainMenu::startRequested, [&]() {
+        auto *monitor = new MonitorWindow(config);
+        monitor->setAttribute(Qt::WA_DeleteOnClose);
+        QObject::connect(monitor, &MonitorWindow::closed, &menu, [&menu]() {
+            menu.show();
+        });
+        menu.hide();
+        monitor->show();
     });
 
     return app.exec();

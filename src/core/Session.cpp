@@ -172,6 +172,13 @@ void Session::onTimeout() {
         m_socket->disconnectFromHost();
 }
 
+void Session::shutdown() {
+    if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        sendLine("Server shutting down.\r\n");
+        m_socket->disconnectFromHost();
+    }
+}
+
 void Session::onDisconnected() {
     logLine(QStringLiteral("session #%1: disconnected %2:%3 after %4 attempt(s)")
             .arg(m_token).arg(m_ip).arg(m_peerPort).arg(m_attempts));

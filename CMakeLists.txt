@@ -24,7 +24,9 @@ set(SOURCES
   src/core/Listener.cpp
   src/core/Session.cpp
   src/db/DbWriter.cpp
+  src/ui/AttackTableModel.cpp
   src/ui/MainMenu.cpp
+  src/ui/MonitorWindow.cpp
 )
 
 add_executable(honeyden ${SOURCES})

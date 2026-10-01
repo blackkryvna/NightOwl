@@ -64,3 +64,12 @@ void Listener::onSessionFinished() {
     if (m_active > 0)
         --m_active;
 }
+
+void Listener::stop() {
+    close(); // stop accepting new connections
+    // Ask live sessions to disconnect; they self-delete on disconnect.
+    const auto sessions = findChildren<Session *>();
+    for (Session *s : sessions)
+        s->shutdown();
+    logLine(QStringLiteral("listener: stopped"));
+}

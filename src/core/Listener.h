@@ -18,13 +18,19 @@ public:
                       GeoLookup *geo = nullptr,
                       QObject *parent = nullptr);
 
+public slots:
+    // Slot so it can be invoked across threads (BlockingQueuedConnection).
     bool start(quint16 port);
-    int activeSessions() const { return m_active; }
+    // Stops accepting; existing sessions are asked to disconnect.
+    void stop();
 
 signals:
     void sessionStarted(const Events::SessionStarted &e);
     void authAttempt(const Events::AuthAttempt &e);
     void sessionFinished(const Events::SessionFinished &e);
+
+public:
+    int activeSessions() const { return m_active; }
 
 protected:
     void incomingConnection(qintptr socketDescriptor) override;
