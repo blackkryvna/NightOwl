@@ -22,9 +22,11 @@ set(SOURCES
   src/core/GeoLookup.cpp
   src/core/Listener.cpp
   src/core/Session.cpp
+  src/db/DbReader.cpp
   src/db/DbWriter.cpp
   src/ui/AttackChart.cpp
   src/ui/AttackTableModel.cpp
+  src/ui/HistoryPanel.cpp
   src/ui/MainMenu.cpp
   src/ui/MonitorWindow.cpp
 )

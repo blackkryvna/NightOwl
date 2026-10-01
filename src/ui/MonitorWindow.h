@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/Config.h"
+#include "db/DbReader.h" // RunAttempt for the history slot
+#include "db/DbWriter.h" // DbConfig
 
 #include <QThread>
 #include <QWidget>
@@ -8,7 +10,9 @@
 class AttackTableModel;
 class AttackChart;
 class DbWriter;
+class DbReader;
 class GeoLookup;
+class HistoryPanel;
 class Listener;
 class QLabel;
 class QPushButton;
@@ -40,10 +44,13 @@ protected:
 
 private slots:
     void onStopClicked();
+    void showRunDetails(int runId, const QList<RunAttempt> &attempts);
 
 private:
     void startTrap();
     void stopTrap();
+    void startHistory(); // reader thread + run list after the scan stops
+    DbConfig dbConfig() const;
 
     Config m_config;
     AttackTableModel *m_model = nullptr;
@@ -55,8 +62,11 @@ private:
 
     QThread m_netThread;
     QThread m_dbThread;
+    QThread m_readerThread; // history SELECTs, never the GUI thread
     Listener *m_listener = nullptr;
     DbWriter *m_writer = nullptr;
+    DbReader *m_reader = nullptr;
+    HistoryPanel *m_history = nullptr;
     GeoLookup *m_geo = nullptr; // read from the net thread after load()
 
     bool m_running = false;

@@ -1,10 +1,10 @@
 #include "ui/MonitorWindow.h"
 #include "ui/AttackChart.h"
 #include "ui/AttackTableModel.h"
+#include "ui/HistoryPanel.h"
 
 #include "core/GeoLookup.h"
 #include "core/Listener.h"
-#include "db/DbWriter.h"
 
 #include <QCloseEvent>
 #include <QHeaderView>
@@ -35,13 +35,8 @@ MonitorWindow::MonitorWindow(const Config &config, QWidget *parent)
 
     m_historySide = new QWidget(splitter);
     auto *histLayout = new QVBoxLayout(m_historySide);
-    auto *histTitle = new QLabel(QStringLiteral("История"), m_historySide);
-    histTitle->setStyleSheet(QStringLiteral("font-size: 16px; font-weight: bold;"));
-    histLayout->addWidget(histTitle);
-    auto *histHint = new QLabel(QStringLiteral("Run list arrives in stage 9."), m_historySide);
-    histHint->setWordWrap(true);
-    histLayout->addWidget(histHint);
-    histLayout->addStretch(1);
+    m_history = new HistoryPanel(m_historySide);
+    histLayout->addWidget(m_history);
     m_historySide->setVisible(false);
     splitter->addWidget(m_historySide);
 
@@ -92,6 +87,10 @@ MonitorWindow::MonitorWindow(const Config &config, QWidget *parent)
 
 MonitorWindow::~MonitorWindow() {
     stopTrap();
+    m_readerThread.quit();
+    m_readerThread.wait();
+    delete m_reader;
+    m_reader = nullptr;
 }
 
 void MonitorWindow::closeEvent(QCloseEvent *event) {
@@ -111,9 +110,66 @@ void MonitorWindow::onStopClicked() {
         m_chart->setLive(false);
     m_statusLabel->setText(QStringLiteral("Stopped. Run saved to the database."));
     m_stopButton->setText(QStringLiteral("Остановлено"));
-    // Open the History tab on the left (populated with real runs in stage 9).
+    // Open the History tab on the left and load past runs from the DB.
     m_historySide->setVisible(true);
+    startHistory();
     emit scanStopped();
+}
+
+DbConfig MonitorWindow::dbConfig() const {
+    DbConfig c;
+    c.host = m_config.dbHost();
+    c.port = m_config.dbPort();
+    c.name = m_config.dbName();
+    c.user = m_config.dbUser();
+    c.password = m_config.dbPassword();
+    return c;
+}
+
+void MonitorWindow::startHistory() {
+    if (m_reader)
+        return;
+    DbReader::registerMetaTypes();
+    m_reader = new DbReader(dbConfig());
+    m_reader->moveToThread(&m_readerThread);
+    connect(&m_readerThread, &QThread::started, m_reader, &DbReader::open);
+    connect(m_reader, &DbReader::runsLoaded,
+            m_history, &HistoryPanel::setRuns);
+    connect(m_reader, &DbReader::errorOccurred,
+            m_history, &HistoryPanel::showError);
+    // Click a run -> SELECT its attempts -> same table/chart widgets.
+    connect(m_history, &HistoryPanel::runSelected,
+            m_reader, &DbReader::loadRunDetails);
+    connect(m_reader, &DbReader::runDetailsLoaded,
+            this, &MonitorWindow::showRunDetails);
+    m_readerThread.start();
+    QMetaObject::invokeMethod(m_reader, "loadRuns", Qt::QueuedConnection);
+}
+
+void MonitorWindow::showRunDetails(int runId, const QList<RunAttempt> &attempts) {
+    // Same display code as the live view: refill the shared model/chart.
+    m_model->clear();
+    QList<QDateTime> stamps;
+    stamps.reserve(attempts.size());
+    for (const RunAttempt &a : attempts) {
+        Events::AuthAttempt e;
+        e.ip = a.ip;
+        e.port = static_cast<quint16>(a.port);
+        e.country = a.country;
+        e.city = a.city;
+        e.ts = a.ts;
+        e.username = a.username;
+        e.password = a.password;
+        e.attemptNo = a.attemptNo;
+        m_model->addAttempt(e);
+        stamps.append(a.ts);
+    }
+    if (m_chart) {
+        m_chart->setLive(false);
+        m_chart->setEvents(stamps);
+    }
+    m_statusLabel->setText(
+        QStringLiteral("Showing run #%1 (%2 attempts)").arg(runId).arg(attempts.size()));
 }
 
 void MonitorWindow::startTrap() {
@@ -121,14 +177,7 @@ void MonitorWindow::startTrap() {
     m_geo = new GeoLookup();
     const bool geoOk = m_geo->load(m_config.geoipPath());
 
-    DbConfig dbCfg;
-    dbCfg.host = m_config.dbHost();
-    dbCfg.port = m_config.dbPort();
-    dbCfg.name = m_config.dbName();
-    dbCfg.user = m_config.dbUser();
-    dbCfg.password = m_config.dbPassword();
-
-    m_writer = new DbWriter(dbCfg);
+    m_writer = new DbWriter(dbConfig());
     m_writer->moveToThread(&m_dbThread);
     connect(&m_dbThread, &QThread::started, m_writer, &DbWriter::open);
     connect(&m_dbThread, &QThread::started, m_writer, &DbWriter::startRun);
