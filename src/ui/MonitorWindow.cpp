@@ -10,9 +10,12 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMetaObject>
+#include <QPushButton>
 #include <QScrollArea>
+#include <QSplitter>
 #include <QTableView>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 
 #include <iostream>
 
@@ -21,15 +24,32 @@ MonitorWindow::MonitorWindow(const Config &config, QWidget *parent)
     , m_config(config)
 {
     setWindowTitle(QStringLiteral("HoneyDen — monitoring"));
-    resize(900, 650);
+    resize(1100, 650);
 
-    auto *outer = new QVBoxLayout(this);
+    auto *outer = new QHBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
 
+    // Left side: History panel, appears after the scan stops (stage 9 fills it).
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    outer->addWidget(splitter);
+
+    m_historySide = new QWidget(splitter);
+    auto *histLayout = new QVBoxLayout(m_historySide);
+    auto *histTitle = new QLabel(QStringLiteral("История"), m_historySide);
+    histTitle->setStyleSheet(QStringLiteral("font-size: 16px; font-weight: bold;"));
+    histLayout->addWidget(histTitle);
+    auto *histHint = new QLabel(QStringLiteral("Run list arrives in stage 9."), m_historySide);
+    histHint->setWordWrap(true);
+    histLayout->addWidget(histHint);
+    histLayout->addStretch(1);
+    m_historySide->setVisible(false);
+    splitter->addWidget(m_historySide);
+
     // Vertical scroll area holding all monitoring widgets.
-    auto *scroll = new QScrollArea(this);
+    auto *scroll = new QScrollArea(splitter);
     scroll->setWidgetResizable(true);
-    outer->addWidget(scroll);
+    splitter->addWidget(scroll);
+    splitter->setStretchFactor(1, 1);
 
     auto *content = new QWidget(scroll);
     scroll->setWidget(content);
@@ -55,7 +75,16 @@ MonitorWindow::MonitorWindow(const Config &config, QWidget *parent)
     m_chart = new AttackChart(120, content);
     layout->addWidget(m_chart);
 
-    // Stage 8 adds the stop button here.
+    // Bottom-right: stop button under the graph.
+    auto *stopRow = new QHBoxLayout();
+    stopRow->addStretch(1);
+    m_stopButton = new QPushButton(QStringLiteral("Остановить сканирование"), content);
+    m_stopButton->setMinimumHeight(40);
+    m_stopButton->setCursor(Qt::PointingHandCursor);
+    connect(m_stopButton, &QPushButton::clicked, this, &MonitorWindow::onStopClicked);
+    stopRow->addWidget(m_stopButton);
+    layout->addLayout(stopRow);
+
     layout->addStretch(1);
 
     startTrap();
@@ -68,6 +97,23 @@ MonitorWindow::~MonitorWindow() {
 void MonitorWindow::closeEvent(QCloseEvent *event) {
     QWidget::closeEvent(event);
     emit closed();
+}
+
+void MonitorWindow::onStopClicked() {
+    if (m_stopped)
+        return;
+    m_stopped = true;
+    m_stopButton->setEnabled(false);
+    m_stopButton->setText(QStringLiteral("Останавливается…"));
+    // Close the listener, flush the writer queue, store runs.ended_at.
+    stopTrap();
+    if (m_chart)
+        m_chart->setLive(false);
+    m_statusLabel->setText(QStringLiteral("Stopped. Run saved to the database."));
+    m_stopButton->setText(QStringLiteral("Остановлено"));
+    // Open the History tab on the left (populated with real runs in stage 9).
+    m_historySide->setVisible(true);
+    emit scanStopped();
 }
 
 void MonitorWindow::startTrap() {
