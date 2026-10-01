@@ -14,6 +14,7 @@ find_package(Qt5 REQUIRED COMPONENTS Core Network)
 set(SOURCES
   src/main.cpp
   src/core/Config.cpp
+  src/core/EventQueue.cpp
   src/core/Listener.cpp
   src/core/Session.cpp
 )

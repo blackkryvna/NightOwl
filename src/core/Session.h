@@ -1,20 +1,58 @@
 #pragma once
 
+#include "core/EventQueue.h"
+
 #include <QObject>
 
 class QTcpSocket;
+class QTimer;
 
-// One inbound client connection.
-// Stage 1: just dumps everything the client sends to stdout.
+// One inbound client connection with a fake login dialog.
+// QTcpSocket: event-driven TCP socket, readyRead/disconnected signals.
+// Always denies access but records every attempt via signals.
 class Session : public QObject {
     Q_OBJECT
 public:
-    explicit Session(qintptr socketDescriptor, QObject *parent = nullptr);
+    explicit Session(qintptr socketDescriptor,
+                     int maxLineLength = 256,
+                     int timeoutSec = 60,
+                     QObject *parent = nullptr);
+
+    QString peerIp() const { return m_ip; }
+    quint16 peerPort() const { return m_peerPort; }
+    quint64 token() const { return m_token; }
+
+signals:
+    void sessionStarted(const Events::SessionStarted &e);
+    void authAttempt(const Events::AuthAttempt &e);
+    void sessionFinished(const Events::SessionFinished &e);
 
 private slots:
     void onReadyRead();
     void onDisconnected();
+    void onTimeout();
 
 private:
+    void sendLine(const QByteArray &data);
+    void promptLogin();
+    void promptPassword();
+    void handleLine(const QString &line);
+    void finish();
+
+    enum class State { AwaitLogin, AwaitPassword };
+
     QTcpSocket *m_socket = nullptr;
+    QTimer *m_idleTimer = nullptr;
+    QByteArray m_buffer;
+    QString m_ip;
+    quint16 m_peerPort = 0;
+    quint64 m_token = 0;
+    QString m_country;
+    QString m_city;
+    QString m_pendingUser;
+    QDateTime m_startedAt;
+    State m_state = State::AwaitLogin;
+    int m_attempts = 0;
+    int m_maxLineLength = 256;
+    bool m_finished = false;
 };
