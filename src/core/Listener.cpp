@@ -1,4 +1,5 @@
 #include "core/Listener.h"
+#include "core/GeoLookup.h"
 #include "core/Session.h"
 
 #include <QTcpSocket>
@@ -15,11 +16,13 @@ void logError(const QString &line) {
 }
 }
 
-Listener::Listener(int maxSessions, int maxLineLength, int timeoutSec, QObject *parent)
+Listener::Listener(int maxSessions, int maxLineLength, int timeoutSec,
+                   GeoLookup *geo, QObject *parent)
     : QTcpServer(parent)
     , m_maxSessions(maxSessions)
     , m_maxLineLength(maxLineLength)
     , m_timeoutSec(timeoutSec)
+    , m_geo(geo)
 {
 }
 
@@ -48,7 +51,8 @@ void Listener::incomingConnection(qintptr socketDescriptor) {
         return;
     }
     ++m_active;
-    Session *s = new Session(socketDescriptor, m_maxLineLength, m_timeoutSec, this);
+    Session *s = new Session(socketDescriptor, m_maxLineLength, m_timeoutSec,
+                             m_geo, this);
     connect(s, &Session::sessionStarted, this, &Listener::sessionStarted);
     connect(s, &Session::authAttempt, this, &Listener::authAttempt);
     connect(s, &Session::sessionFinished, this, &Listener::sessionFinished);

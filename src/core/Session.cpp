@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QDateTime>
 
+#include "core/GeoLookup.h"
+
 #include <atomic>
 #include <iostream>
 
@@ -22,7 +24,8 @@ quint64 nextToken() {
 }
 }
 
-Session::Session(qintptr socketDescriptor, int maxLineLength, int timeoutSec, QObject *parent)
+Session::Session(qintptr socketDescriptor, int maxLineLength, int timeoutSec,
+                 GeoLookup *geo, QObject *parent)
     : QObject(parent)
     , m_maxLineLength(maxLineLength)
 {
@@ -40,6 +43,13 @@ Session::Session(qintptr socketDescriptor, int maxLineLength, int timeoutSec, QO
     m_peerPort = m_socket->peerPort();
     m_startedAt = QDateTime::currentDateTimeUtc();
 
+    // GeoIP is best-effort: missing DB or unknown IP -> empty fields.
+    if (geo && geo->isLoaded()) {
+        const auto loc = geo->lookup(m_ip);
+        m_country = loc.first;
+        m_city = loc.second;
+    }
+
     // Idle timeout: reset on every received chunk.
     m_idleTimer = new QTimer(this);
     m_idleTimer->setSingleShot(true);
@@ -50,8 +60,11 @@ Session::Session(qintptr socketDescriptor, int maxLineLength, int timeoutSec, QO
     connect(m_socket, &QTcpSocket::readyRead, this, &Session::onReadyRead);
     connect(m_socket, &QTcpSocket::disconnected, this, &Session::onDisconnected);
 
-    logLine(QStringLiteral("session #%1: new connection from %2:%3")
-            .arg(m_token).arg(m_ip).arg(m_peerPort));
+    QString where = QStringLiteral("session #%1: new connection from %2:%3")
+            .arg(m_token).arg(m_ip).arg(m_peerPort);
+    if (!m_country.isEmpty() || !m_city.isEmpty())
+        where += QStringLiteral(" [%1/%2]").arg(m_country, m_city);
+    logLine(where);
 
     // Fake banner + first login prompt.
     sendLine("Welcome to Ubuntu 20.04.3 LTS\r\n");
@@ -60,6 +73,8 @@ Session::Session(qintptr socketDescriptor, int maxLineLength, int timeoutSec, QO
     ev.token = m_token;
     ev.ip = m_ip;
     ev.port = m_peerPort;
+    ev.country = m_country;
+    ev.city = m_city;
     ev.startedAt = m_startedAt;
     emit sessionStarted(ev);
 

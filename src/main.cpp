@@ -1,5 +1,6 @@
 #include "core/Config.h"
 #include "core/EventQueue.h"
+#include "core/GeoLookup.h"
 #include "core/Listener.h"
 #include "db/DbWriter.h"
 
@@ -34,6 +35,10 @@ int main(int argc, char *argv[]) {
         std::cout << "config: loaded from " << config.filePath().toStdString()
                   << " port " << config.port() << std::endl;
 
+    // GeoIP is optional: no file -> empty country/city, trap still works.
+    GeoLookup geo;
+    geo.load(config.geoipPath());
+
     // DB lives in its own thread; trap talks to it only via signals/slots.
     DbConfig dbCfg;
     dbCfg.host = config.dbHost();
@@ -53,7 +58,8 @@ int main(int argc, char *argv[]) {
     });
     dbThread.start();
 
-    Listener listener(config.maxSessions(), config.maxLineLength(), config.sessionTimeoutSec());
+    Listener listener(config.maxSessions(), config.maxLineLength(),
+                      config.sessionTimeoutSec(), &geo);
     if (!listener.start(config.port())) {
         dbThread.quit();
         dbThread.wait();
@@ -64,7 +70,11 @@ int main(int argc, char *argv[]) {
     // Live feed comes straight from Session signals (not via DB).
     QObject::connect(&listener, &Listener::authAttempt,
                      [](const Events::AuthAttempt &e) {
+        QString loc;
+        if (!e.country.isEmpty() || !e.city.isEmpty())
+            loc = QStringLiteral(" [%1/%2]").arg(e.country, e.city);
         std::cout << "auth: [" << e.ip.toStdString() << "]"
+                  << loc.toStdString()
                   << " user='" << e.username.toStdString() << "'"
                   << " pass='" << e.password.toStdString() << "'"
                   << " attempt=" << e.attemptNo << std::endl;

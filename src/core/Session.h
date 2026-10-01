@@ -6,6 +6,7 @@
 
 class QTcpSocket;
 class QTimer;
+class GeoLookup;
 
 // One inbound client connection with a fake login dialog.
 // QTcpSocket: event-driven TCP socket, readyRead/disconnected signals.
@@ -16,6 +17,7 @@ public:
     explicit Session(qintptr socketDescriptor,
                      int maxLineLength = 256,
                      int timeoutSec = 60,
+                     GeoLookup *geo = nullptr, // not owned, may be null
                      QObject *parent = nullptr);
 
     QString peerIp() const { return m_ip; }
