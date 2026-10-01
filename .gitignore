@@ -67,3 +67,19 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Local config with secrets (never commit real passwords)
+config.ini
+*.local.ini
+
+# GeoIP database (download separately, never commit)
+*.mmdb
+
+# IDE and editors
+.vscode/
+.idea/
+*.user
+*.pro.user*
+.qtcreator/
+.cache/clangd/
+*~
