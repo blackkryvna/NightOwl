@@ -5,9 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-# Stage 5: GUI starts (Widgets). Sql still linked for the DB writer.
-# Charts joins in stage 7 with the live graph.
-find_package(Qt5 REQUIRED COMPONENTS Core Network Sql Widgets)
+# Stage 7: GUI + live chart (Widgets, Charts). Sql for the DB writer.
+find_package(Qt5 REQUIRED COMPONENTS Core Network Sql Widgets Charts)
 
 # libmaxminddb has no CMake package: probe headers/lib manually.
 # Missing lib -> build still works, GeoLookup returns empty strings.
@@ -24,6 +23,7 @@ set(SOURCES
   src/core/Listener.cpp
   src/core/Session.cpp
   src/db/DbWriter.cpp
+  src/ui/AttackChart.cpp
   src/ui/AttackTableModel.cpp
   src/ui/MainMenu.cpp
   src/ui/MonitorWindow.cpp
@@ -31,7 +31,7 @@ set(SOURCES
 
 add_executable(honeyden ${SOURCES})
 target_include_directories(honeyden PRIVATE src)
-target_link_libraries(honeyden PRIVATE Qt5::Core Qt5::Network Qt5::Sql Qt5::Widgets)
+target_link_libraries(honeyden PRIVATE Qt5::Core Qt5::Network Qt5::Sql Qt5::Widgets Qt5::Charts)
 if(MAXMINDDB_INCLUDE_DIR AND MAXMINDDB_LIBRARY)
   target_include_directories(honeyden PRIVATE ${MAXMINDDB_INCLUDE_DIR})
   target_link_libraries(honeyden PRIVATE ${MAXMINDDB_LIBRARY})

@@ -1,4 +1,5 @@
 #include "ui/MonitorWindow.h"
+#include "ui/AttackChart.h"
 #include "ui/AttackTableModel.h"
 
 #include "core/GeoLookup.h"
@@ -49,7 +50,12 @@ MonitorWindow::MonitorWindow(const Config &config, QWidget *parent)
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     layout->addWidget(m_table);
 
-    // Stage 7 adds the live chart here, stage 8 the stop button.
+    auto *chartLabel = new QLabel(QStringLiteral("Logins over time"), content);
+    layout->addWidget(chartLabel);
+    m_chart = new AttackChart(120, content);
+    layout->addWidget(m_chart);
+
+    // Stage 8 adds the stop button here.
     layout->addStretch(1);
 
     startTrap();
@@ -95,6 +101,11 @@ void MonitorWindow::startTrap() {
     // GUI table is fed straight from Session signals, not via the DB.
     connect(m_listener, &Listener::authAttempt,
             m_model, &AttackTableModel::addAttempt);
+    // Same for the live chart: one bucket increment per attempt.
+    connect(m_listener, &Listener::authAttempt, this, [this](const Events::AuthAttempt &e) {
+        if (m_chart)
+            m_chart->addEvent(e.ts);
+    });
     connect(m_listener, &Listener::sessionStarted,
             m_writer, &DbWriter::onSessionStarted);
     connect(m_listener, &Listener::authAttempt,

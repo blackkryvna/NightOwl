@@ -6,6 +6,7 @@
 #include <QWidget>
 
 class AttackTableModel;
+class AttackChart;
 class DbWriter;
 class GeoLookup;
 class Listener;
@@ -37,6 +38,7 @@ private:
 
     Config m_config;
     AttackTableModel *m_model = nullptr;
+    AttackChart *m_chart = nullptr;
     QTableView *m_table = nullptr;
     QLabel *m_statusLabel = nullptr;
 
