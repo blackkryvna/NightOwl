@@ -1,16 +1,30 @@
 #include "core/Config.h"
 #include "core/EventQueue.h"
 #include "core/Listener.h"
+#include "db/DbWriter.h"
 
 #include <QCoreApplication>
+#include <QThread>
 
+#include <csignal>
 #include <iostream>
+
+namespace {
+void requestQuit(int) {
+    // Async-safe enough for this console trap: ask the event loop to stop
+    // so main() can flush the DB queue (finishRun) before exiting.
+    if (auto *app = QCoreApplication::instance())
+        app->quit();
+}
+}
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("honeyden"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
     Events::registerMetaTypes();
+    std::signal(SIGINT, requestQuit);
+    std::signal(SIGTERM, requestQuit);
 
     Config config;
     if (config.usingDefaults())
@@ -20,9 +34,32 @@ int main(int argc, char *argv[]) {
         std::cout << "config: loaded from " << config.filePath().toStdString()
                   << " port " << config.port() << std::endl;
 
+    // DB lives in its own thread; trap talks to it only via signals/slots.
+    DbConfig dbCfg;
+    dbCfg.host = config.dbHost();
+    dbCfg.port = config.dbPort();
+    dbCfg.name = config.dbName();
+    dbCfg.user = config.dbUser();
+    dbCfg.password = config.dbPassword();
+
+    QThread dbThread;
+    dbThread.setObjectName(QStringLiteral("db-writer"));
+    DbWriter *writer = new DbWriter(dbCfg);
+    writer->moveToThread(&dbThread);
+    QObject::connect(&dbThread, &QThread::started, writer, &DbWriter::open);
+    QObject::connect(&dbThread, &QThread::started, writer, &DbWriter::startRun);
+    QObject::connect(writer, &DbWriter::errorOccurred, [](const QString &m) {
+        std::cerr << "db error: " << m.toStdString() << std::endl;
+    });
+    dbThread.start();
+
     Listener listener(config.maxSessions(), config.maxLineLength(), config.sessionTimeoutSec());
-    if (!listener.start(config.port()))
+    if (!listener.start(config.port())) {
+        dbThread.quit();
+        dbThread.wait();
+        delete writer;
         return 1;
+    }
 
     // Live feed comes straight from Session signals (not via DB).
     QObject::connect(&listener, &Listener::authAttempt,
@@ -32,8 +69,25 @@ int main(int argc, char *argv[]) {
                   << " pass='" << e.password.toStdString() << "'"
                   << " attempt=" << e.attemptNo << std::endl;
     });
+    // Persist everything (queued into the writer thread).
+    QObject::connect(&listener, &Listener::sessionStarted,
+                     writer, &DbWriter::onSessionStarted);
+    QObject::connect(&listener, &Listener::authAttempt,
+                     writer, &DbWriter::onAuthAttempt);
+    QObject::connect(&listener, &Listener::sessionFinished,
+                     writer, &DbWriter::onSessionFinished);
 
     std::cout << "honeyden: trap running. Test with: nc 127.0.0.1 "
               << config.port() << std::endl;
-    return app.exec();
+
+    const int rc = app.exec();
+
+    // Flush the queue: finishRun + close run in the worker, blocking,
+    // so ended_at is stored even on Ctrl+C / SIGTERM.
+    QMetaObject::invokeMethod(writer, "finishRun", Qt::BlockingQueuedConnection);
+    QMetaObject::invokeMethod(writer, "close", Qt::BlockingQueuedConnection);
+    dbThread.quit();
+    dbThread.wait();
+    delete writer;
+    return rc;
 }
